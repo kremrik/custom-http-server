@@ -1,10 +1,12 @@
 import socket
 from socket import AF_INET, SOCK_STREAM
+from sys import argv
 from time import sleep
 
 
 def connect(
-    message, 
+    message,
+    sleep_for,
     host="localhost", 
     port=50007, 
     buff_size=8
@@ -12,6 +14,8 @@ def connect(
     with socket.socket(AF_INET, SOCK_STREAM) as s:
         s.connect((host, port))
         s.sendall(message)
+        
+        sleep(sleep_for)
 
         response = b""
         while True:
@@ -21,10 +25,10 @@ def connect(
                 break
 
         print(response.decode())
-        sleep(10)
         s.shutdown(1)
 
 
 if __name__ == "__main__":
+    sleep_for = int(argv[1])
     message = b"GET /path/to/resource HTTP/1.1\nHost: localhost\nAccept-Language: en\n\nTHIS IS SOME BODY TEXT"
-    connect(message)
+    connect(message, sleep_for)
