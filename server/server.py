@@ -70,7 +70,6 @@ async def http_client_handler(
             body=body
         )
         resp_msg = response.to_bytes(resp)
-        resp_msg = b"HELLO!"
         writer.write(resp_msg)
         await writer.drain()
         writer.close()

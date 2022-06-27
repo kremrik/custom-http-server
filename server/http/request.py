@@ -3,9 +3,10 @@ from server.http.header import Header
 from server.http.method import Method
 from server.http.protocol import Protocol
 
+import asyncio
 import logging
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import Iterator, List, NamedTuple, Optional
 
 
 LOGGER = logging.getLogger("http_parser")
@@ -20,8 +21,96 @@ class Request:
     method: Method
     path: str
     protocol: Protocol
-    headers: List[Optional[Header]]
+    headers: Iterator[Optional[Header]]
     body: Optional[bytes]
+
+
+class LazyRequest(object):
+    """
+    Request object that only reads from a TCP stream when
+    required. For example, if no headers are interrogated,
+    then parsing will stop at the Start Line.
+    """
+
+    method: Method
+    path: str
+    protocol: Protocol
+    headers: Iterator[Optional[Header]]
+    body: Optional[bytes]
+
+    def __init__(
+        self, 
+        reader: asyncio.StreamReader,
+        buff_size: int = 1024
+    ) -> None:
+        self._reader: asyncio.StreamReader = reader
+        self._buff_size: int = buff_size
+
+        self._buffer: bytes = b""
+
+        self._method: Method = None
+        self._path: str = None
+        self._protocol: Protocol = None
+        self._headers: Iterator[Optional[Header]] = []
+        self._body: Optional[bytes] = None
+
+    @property
+    async def method(self) -> Method:
+        if not self._method:
+            await self._parse_start_line()
+        return self._method
+
+    @property
+    async def path(self) -> str:
+        if not self._path:
+            await self._parse_start_line()
+        return self._path
+
+    @property
+    async def protocol(self) -> Protocol:
+        if not self._protocol:
+            await self._parse_start_line()
+        return self._protocol
+
+    @property
+    async def headers(self) -> Iterator[Optional[Header]]:
+        pass
+
+    @property
+    async def body(self) -> Optional[bytes]:
+        pass
+
+    async def _recv(self):
+        return await self._reader.read(self._buff_size)
+
+    async def _hydrate(self):
+        self._buffer += await self._recv()
+
+    async def _parse_start_line(self):
+        if not self._buffer:
+            await self._hydrate()
+        
+        lines = self._buffer.splitlines()
+        if len(lines) == 1:
+            # either there's only 1 line or it's incomplete
+            await self._hydrate()
+
+        start_line = lines[0].decode()
+        
+        method, path, protocol = start_line.split()
+        
+        if protocol == "HTTP/1.1":
+            protocol = Protocol.HTTP1_1
+        else:
+            msg = f"Protocol {protocol} not supported"
+            LOGGER.error(msg)
+            raise RequestParseError(msg)
+
+        method = Method[method.upper()]
+
+        self._method = method
+        self._path = path
+        self._protocol = protocol
 
 
 class StartLine(NamedTuple):
