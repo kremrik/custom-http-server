@@ -161,7 +161,9 @@ def parse_start_line(line: str) -> StartLine:
     try:
         method, path, protocol = line.decode().split()
         
-        if protocol == "HTTP/1.1":
+        if protocol == "HTTP/1.0":
+            protocol = Protocol.HTTP1_0
+        elif protocol == "HTTP/1.1":
             protocol = Protocol.HTTP1_1
         else:
             msg = f"Protocol {protocol} not supported"
@@ -186,7 +188,9 @@ def parse_headers(
 
     try:
         for line in lines:
-            name, value = line.decode().split(":")
+            name, *value = line.decode().split(":")
+            value = "".join(value)
+
             name = name.strip().upper()
             value = value.strip()
             header = Header(name, value)

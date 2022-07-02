@@ -6,11 +6,11 @@ from functools import partial
 
 
 if __name__ == "__main__":
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.DEBUG)
     
-    host = "localhost"
-    port = 50007
-    client_handler = partial(server.http_client_handler, buff_size=8)
+    host = "0.0.0.0"
+    port = 8080
+    client_handler = server.http_client_handler
     logging.info(f"Starting server on http://{host}:{port} with client handler {client_handler}")
 
     asyncio.run(

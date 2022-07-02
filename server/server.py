@@ -47,6 +47,7 @@ async def http_client_handler(
             break
     
     try:
+        print(); print(msg); print()
         req = request.parse_request(msg)
 
         LOGGER.info(f"{req.protocol} {req.method} {req.path}")
@@ -57,6 +58,7 @@ async def http_client_handler(
             status=response.Status.OK,
             body=body
         )
+        print(req)
         resp_msg = response.to_bytes(resp)
         writer.write(resp_msg)
         await writer.drain()
