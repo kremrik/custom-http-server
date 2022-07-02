@@ -1,0 +1,11 @@
+html {
+    display: table;
+    margin: auto;
+}
+
+body {
+    font-family: Sans-Serif;
+    color: rgb(60, 60, 60);
+    display: table-cell;
+    vertical-align: middle;
+}
