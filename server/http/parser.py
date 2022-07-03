@@ -44,19 +44,7 @@ class BufferedParser(object):
             if self._state != MessageState.Body:
                 ws = count_ws(c)
                 self._ws_encountered += ws
-                if (
-                    self._state == MessageState.StartLine
-                    and self._ws_encountered == 2
-                ):
-                    self._state = MessageState.Header
-                    self._ws_encountered = 0
-                elif (
-                    self._state == MessageState.Header
-                    and self._ws_encountered == 4
-                ):
-                    self._state = MessageState.Body
-                    self._ws_encountered = 0
-
+                self._update_state()
                 if not stripped_c:
                     continue
 
@@ -64,6 +52,20 @@ class BufferedParser(object):
             lines.append(line)
 
         return lines
+
+    def _update_state(self):
+        if (
+            self._state == MessageState.StartLine
+            and self._ws_encountered == 2
+        ):
+            self._state = MessageState.Header
+            self._ws_encountered = 0
+        elif (
+            self._state == MessageState.Header
+            and self._ws_encountered == 4
+        ):
+            self._state = MessageState.Body
+            self._ws_encountered = 0
 
 
 def count_ws(line: bytes) -> int:

@@ -77,7 +77,4 @@ class test_Parser(unittest.TestCase):
             ),
         ]
         actual = p.maybe_get_lines(line)
-        print()
-        print(actual)
-        print()
         self.assertEqual(expect, actual)
