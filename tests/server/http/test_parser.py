@@ -6,7 +6,7 @@ import unittest
 class test_Parser(unittest.TestCase):
     def test_line_and_buffer_same_size(self):
         line = b"GET / HTTP/1.1\r\n\r\n"
-        p = parser.Parser()
+        p = parser.BufferedParser()
 
         expect = [
             parser.Line(
@@ -22,7 +22,7 @@ class test_Parser(unittest.TestCase):
         line1 = b"GET / HTT"
         line2 = b"P/1.1\r\n\r\n"
 
-        p = parser.Parser()
+        p = parser.BufferedParser()
 
         with self.subTest("should_return_none"):
             expect = []
@@ -41,7 +41,7 @@ class test_Parser(unittest.TestCase):
 
     def test_start_line_and_header_within_buffer(self):
         line = b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
-        p = parser.Parser()
+        p = parser.BufferedParser()
         expect = [
             parser.Line(
                 data=b"GET / HTTP/1.1",
@@ -57,7 +57,7 @@ class test_Parser(unittest.TestCase):
 
     def test_start_line_and_header_and_body_within_buffer(self):
         line = b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\nBODY\nTEXT\r\n\r\n"
-        p = parser.Parser()
+        p = parser.BufferedParser()
         expect = [
             parser.Line(
                 data=b"GET / HTTP/1.1",

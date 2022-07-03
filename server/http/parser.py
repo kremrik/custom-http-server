@@ -17,7 +17,7 @@ class Line(NamedTuple):
     type: MessageState
 
 
-class Parser(object):
+class BufferedParser(object):
     __slots__ = (
         "_state",
         "_buffer",
