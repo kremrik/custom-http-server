@@ -11,6 +11,8 @@ from typing import Iterator, List, NamedTuple, Optional
 
 LOGGER = logging.getLogger("http_parser")
 
+NEWLINE = b"\r\n"
+
 
 class RequestParseError(HttpServerError):
     pass
@@ -39,14 +41,15 @@ class LazyRequest(object):
     body: Optional[bytes]
 
     def __init__(
-        self, 
+        self,
         reader: asyncio.StreamReader,
-        buff_size: int = 1024
+        buff_size: int = 1024,
     ) -> None:
         self._reader: asyncio.StreamReader = reader
         self._buff_size: int = buff_size
 
-        self._buffer: bytes = b""
+        self._ready_lines: List[bytes] = []
+        self._incomplete_line: bytes = b""
 
         self._method: Method = None
         self._path: str = None
@@ -83,34 +86,26 @@ class LazyRequest(object):
     async def _recv(self):
         return await self._reader.read(self._buff_size)
 
-    async def _hydrate(self):
-        self._buffer += await self._recv()
+    async def _hydrate_lines(self):
+        buffered_data = await self._recv()
+        lines = buffered_data.splitlines(keepends=True)
+        for line in lines:
+            pass
 
     async def _parse_start_line(self):
-        if not self._buffer:
-            await self._hydrate()
-        
-        lines = self._buffer.splitlines()
-        if len(lines) == 1:
-            # either there's only 1 line or it's incomplete
-            await self._hydrate()
+        if not self._ready_lines:
+            await self._hydrate_lines()
 
-        start_line = lines[0].decode()
-        
-        method, path, protocol = start_line.split()
-        
-        if protocol == "HTTP/1.1":
-            protocol = Protocol.HTTP1_1
-        else:
-            msg = f"Protocol {protocol} not supported"
-            LOGGER.error(msg)
-            raise RequestParseError(msg)
+        start_line = self._ready_lines[0].decode()
 
-        method = Method[method.upper()]
+        method, path, protocol = parse_start_line(start_line)
 
         self._method = method
         self._path = path
         self._protocol = protocol
+
+    def __repr__(self) -> str:
+        pass
 
 
 class StartLine(NamedTuple):
@@ -119,70 +114,82 @@ class StartLine(NamedTuple):
     protocol: Protocol
 
 
-def parse_request(message: bytes) -> Request:
-    lines = message.splitlines()
+# def parse_request(message: bytes) -> Request:
+#     lines = message.splitlines()
 
-    if len(lines) < 1:
-        msg = "Improperly formatted HTTP message"
-        detail = message if len(msg) < 497 else message[:500] + b"..."
-        LOGGER.error(msg)
-        LOGGER.debug(detail)
-        raise RequestParseError(msg)
+#     if len(lines) < 1:
+#         msg = "Improperly formatted HTTP message"
+#         detail = message if len(msg) < 497 else message[:500] + b"..."
+#         LOGGER.error(msg)
+#         LOGGER.debug(detail)
+#         raise RequestParseError(msg)
 
-    start_line = lines[0]
-    method, path, protocol = parse_start_line(start_line)
+#     start_line = lines[0]
+#     method, path, protocol = parse_start_line(start_line)
 
-    _headers = []
-    _body = []
+#     _headers = []
+#     _body = []
 
-    for idx, line in enumerate(lines[1:], start=1):
-        if line:
-            _headers.append(line)
-        else:
-            break
+#     for idx, line in enumerate(lines[1:], start=1):
+#         if line:
+#             _headers.append(line)
+#         else:
+#             break
 
-    headers = parse_headers(_headers)
+#     headers = parse_headers(_headers)
 
-    _body = lines[idx:]
-    body = parse_body(_body)
+#     _body = lines[idx:]
+#     body = parse_body(_body)
 
-    request = Request(
-        method=method,
-        path=path,
-        protocol=protocol,
-        headers=headers,
-        body=body,
-    )
+#     request = Request(
+#         method=method,
+#         path=path,
+#         protocol=protocol,
+#         headers=headers,
+#         body=body,
+#     )
 
-    return request
-    
+#     return request
+
 
 def parse_start_line(line: str) -> StartLine:
     try:
-        method, path, protocol = line.decode().split()
-        
-        if protocol == "HTTP/1.0":
-            protocol = Protocol.HTTP1_0
-        elif protocol == "HTTP/1.1":
-            protocol = Protocol.HTTP1_1
-        else:
-            msg = f"Protocol {protocol} not supported"
-            LOGGER.error(msg)
-            raise RequestParseError(msg)
-
-        method = Method[method.upper()]
-
+        method, path, protocol = line.split()
+        protocol = parse_protocol(protocol)
+        method = parse_method(method)
         return StartLine(method, path, protocol)
 
-    except Exception as e:
+    except RequestParseError as e:
         msg = "Improperly formatted HTTP start line"
         LOGGER.error(msg)
         LOGGER.debug(e)
         raise RequestParseError(msg)
 
+    except Exception as e:
+        msg = "Unknown request parsing error"
+        LOGGER.error(msg)
+        LOGGER.debug(e)
+        raise RequestParseError(msg)
+
+
+def parse_protocol(protocol: str) -> Protocol:
+    try:
+        return Protocol[protocol.replace(".", "_").replace("/", "")]
+    except KeyError as e:
+        LOGGER.error(e)
+        raise RequestParseError(f"Protocol {protocol} not supported")
+
+
+def parse_method(method: str) -> Method:
+    try:
+        return Method[method.upper()]
+    except KeyError as e:
+        LOGGER.error(e)
+        raise RequestParseError(f"Method {method} not supported")
+
 
 def parse_headers(
-    lines: List[Optional[bytes]]
+    lines: List[Optional[bytes]],
 ) -> List[Header]:
     headers = []
 
@@ -201,12 +208,12 @@ def parse_headers(
         LOGGER.error(msg)
         LOGGER.debug(e)
         raise RequestParseError(msg)
-    
+
     return headers
 
 
 def parse_body(
-    lines: List[Optional[bytes]]
+    lines: List[Optional[bytes]],
 ) -> Optional[bytes]:
     body = b"".join(lines)
     if not body:

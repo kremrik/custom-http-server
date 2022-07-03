@@ -23,7 +23,7 @@ class test_parse_request(unittest.TestCase):
             status=status,
             headers=[
                 response.Header("Content-Type", "application/json")
-            ]
+            ],
         )
         expect = b"HTTP/1.1 200 OK\nContent-Type: application/json"
         actual = response.to_bytes(resp)
@@ -38,7 +38,7 @@ class test_parse_request(unittest.TestCase):
             headers=[
                 response.Header("Content-Type", "application/json")
             ],
-            body=b"THIS IS A MESSAGE"
+            body=b"THIS IS A MESSAGE",
         )
         expect = b"HTTP/1.1 200 OK\nContent-Type: application/json\n\nTHIS IS A MESSAGE"
         actual = response.to_bytes(resp)

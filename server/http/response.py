@@ -58,8 +58,7 @@ def make_status_line(response: Response) -> bytes:
 def make_headers(response: Response) -> bytes:
     if response.headers:
         headers = "\n".join(
-            f"{h.name}: {h.value}"
-            for h in response.headers
+            f"{h.name}: {h.value}" for h in response.headers
         ).encode()
         return headers
     return None

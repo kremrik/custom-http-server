@@ -13,17 +13,13 @@ async def serve(host, port, client_handler=None):
     if not client_handler:
         client_handler = default_client_handler
 
-    server = await asyncio.start_server(
-        client_handler, host, port
-    )
+    server = await asyncio.start_server(client_handler, host, port)
 
     async with server:
         await server.serve_forever()
 
 
-async def default_client_handler(
-    reader, writer, buff_size=1024
-):
+async def default_client_handler(reader, writer, buff_size=1024):
     addr = writer.get_extra_info("peername")
     LOGGER.info(f"Client connected: [{addr}]")
 
@@ -33,9 +29,7 @@ async def default_client_handler(
     writer.close()
 
 
-async def http_client_handler(
-    reader, writer, buff_size=1024
-):
+async def http_client_handler(reader, writer, buff_size=1024):
     addr = writer.get_extra_info("peername")
     LOGGER.info(f"Client connected: [{addr}]")
 
@@ -45,9 +39,11 @@ async def http_client_handler(
         msg += buffer
         if len(buffer) < buff_size:
             break
-    
+
     try:
-        print(); print(msg); print()
+        print()
+        print(msg)
+        print()
         req = request.parse_request(msg)
 
         LOGGER.info(f"{req.protocol} {req.method} {req.path}")
@@ -56,7 +52,7 @@ async def http_client_handler(
         resp = response.Response(
             protocol=response.Protocol.HTTP1_1,
             status=response.Status.OK,
-            body=body
+            body=body,
         )
         print(req)
         resp_msg = response.to_bytes(resp)
@@ -69,7 +65,7 @@ async def http_client_handler(
         resp = response.Response(
             protocol=response.Protocol.HTTP1_1,
             status=response.Status.NotFound,
-            body=body
+            body=body,
         )
         resp_msg = response.to_bytes(resp)
         writer.write(resp_msg)
