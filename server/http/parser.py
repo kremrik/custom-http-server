@@ -8,7 +8,7 @@ NL = b"\n"
 
 class MessageState(Enum):
     StartLine = auto()
-    Headers = auto()
+    Header = auto()
     Body = auto()
 
 
@@ -29,13 +29,42 @@ class Parser(object):
         self._buffer: bytes = b""
         self._ws_encountered: int = 0
 
-    def maybe_get_line(self, data: bytes) -> Optional[List[Line]]:
+    def maybe_get_lines(self, data: bytes) -> Optional[List[Line]]:
         self._buffer += data
-        *complete, incomplete = self._buffer.splitlines()
+        *complete, incomplete = self._buffer.splitlines(
+            keepends=True
+        )
         self._buffer = incomplete
 
         lines = []
         for c in complete:
-            line = Line(data=c, type=self._state)
+            stripped_c = c.strip()
+            cur_state = self._state
+
+            if self._state != MessageState.Body:
+                ws = count_ws(c)
+                self._ws_encountered += ws
+                if (
+                    self._state == MessageState.StartLine
+                    and self._ws_encountered == 2
+                ):
+                    self._state = MessageState.Header
+                    self._ws_encountered = 0
+                elif (
+                    self._state == MessageState.Header
+                    and self._ws_encountered == 4
+                ):
+                    self._state = MessageState.Body
+                    self._ws_encountered = 0
+
+                if not stripped_c:
+                    continue
+
+            line = Line(data=stripped_c, type=cur_state)
             lines.append(line)
+
         return lines
+
+
+def count_ws(line: bytes) -> int:
+    return line.count(CR) + line.count(NL)
