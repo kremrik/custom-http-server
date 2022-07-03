@@ -42,7 +42,7 @@ class BufferedParser(object):
             cur_state = self._state
 
             if self._state != MessageState.Body:
-                ws = count_ws(c)
+                ws = BufferedParser.count_ws(c)
                 self._ws_encountered += ws
                 self._update_state()
                 if not stripped_c:
@@ -67,6 +67,6 @@ class BufferedParser(object):
             self._state = MessageState.Body
             self._ws_encountered = 0
 
-
-def count_ws(line: bytes) -> int:
-    return line.count(CR) + line.count(NL)
+    @staticmethod
+    def count_ws(line: bytes) -> int:
+        return line.count(CR) + line.count(NL)

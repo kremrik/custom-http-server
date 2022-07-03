@@ -1,4 +1,5 @@
 from server.error import HttpServerError
+from server.http import parser
 from server.http.header import Header
 from server.http.method import Method
 from server.http.protocol import Protocol
@@ -6,6 +7,7 @@ from server.http.protocol import Protocol
 import asyncio
 import logging
 from dataclasses import dataclass
+from functools import wraps
 from typing import Iterator, List, NamedTuple, Optional
 
 
@@ -40,6 +42,18 @@ class LazyRequest(object):
     headers: Iterator[Optional[Header]]
     body: Optional[bytes]
 
+    __slots__ = (
+        "_reader",
+        "_buff_size",
+        "_parser",
+        "_lines",
+        "_method",
+        "_path",
+        "_protocol",
+        "_headers",
+        "_body",
+    )
+
     def __init__(
         self,
         reader: asyncio.StreamReader,
@@ -47,9 +61,8 @@ class LazyRequest(object):
     ) -> None:
         self._reader: asyncio.StreamReader = reader
         self._buff_size: int = buff_size
-
-        self._ready_lines: List[bytes] = []
-        self._incomplete_line: bytes = b""
+        self._parser: parser.BufferedParser = parser.BufferedParser()
+        self._lines: List[parser.Line] = []
 
         self._method: Method = None
         self._path: str = None
@@ -60,19 +73,19 @@ class LazyRequest(object):
     @property
     async def method(self) -> Method:
         if not self._method:
-            await self._parse_start_line()
+            await self._process_next_lines()
         return self._method
 
     @property
     async def path(self) -> str:
         if not self._path:
-            await self._parse_start_line()
+            await self._process_next_lines()
         return self._path
 
     @property
     async def protocol(self) -> Protocol:
         if not self._protocol:
-            await self._parse_start_line()
+            await self._process_next_lines()
         return self._protocol
 
     @property
@@ -83,26 +96,33 @@ class LazyRequest(object):
     async def body(self) -> Optional[bytes]:
         pass
 
-    async def _recv(self):
-        return await self._reader.read(self._buff_size)
-
-    async def _hydrate_lines(self):
-        buffered_data = await self._recv()
-        lines = buffered_data.splitlines(keepends=True)
-        for line in lines:
-            pass
-
-    async def _parse_start_line(self):
-        if not self._ready_lines:
+    async def _process_next_lines(self):
+        if not self._lines:
             await self._hydrate_lines()
 
-        start_line = self._ready_lines[0].decode()
+        for line in self._lines:
+            match line.type:
+                case parser.MessageState.StartLine:
+                    method, path, protocol = parse_start_line(
+                        line.data.decode()
+                    )
+                    self._method = method
+                    self._path = path
+                    self._protocol = protocol
+                case parser.MessageState.Header:
+                    pass
+                case parser.MessageState.Body:
+                    pass
 
-        method, path, protocol = parse_start_line(start_line)
+    async def _hydrate_lines(self) -> List[parser.Line]:
+        lines = None
+        while not lines:
+            data = await self._recv()
+            lines = self._parser.maybe_get_lines(data)
+        self._lines = lines
 
-        self._method = method
-        self._path = path
-        self._protocol = protocol
+    async def _recv(self) -> bytes:
+        return await self._reader.read(self._buff_size)
 
     def __repr__(self) -> str:
         pass
@@ -112,44 +132,6 @@ class StartLine(NamedTuple):
     method: Method
     path: str
     protocol: Protocol
-
-
-# def parse_request(message: bytes) -> Request:
-#     lines = message.splitlines()
-
-#     if len(lines) < 1:
-#         msg = "Improperly formatted HTTP message"
-#         detail = message if len(msg) < 497 else message[:500] + b"..."
-#         LOGGER.error(msg)
-#         LOGGER.debug(detail)
-#         raise RequestParseError(msg)
-
-#     start_line = lines[0]
-#     method, path, protocol = parse_start_line(start_line)
-
-#     _headers = []
-#     _body = []
-
-#     for idx, line in enumerate(lines[1:], start=1):
-#         if line:
-#             _headers.append(line)
-#         else:
-#             break
-
-#     headers = parse_headers(_headers)
-
-#     _body = lines[idx:]
-#     body = parse_body(_body)
-
-#     request = Request(
-#         method=method,
-#         path=path,
-#         protocol=protocol,
-#         headers=headers,
-#         body=body,
-#     )
-
-#     return request
 
 
 def parse_start_line(line: str) -> StartLine:
