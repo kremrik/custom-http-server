@@ -46,13 +46,65 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
                 await lazy_request.protocol,
             )
 
-    @unittest.skip("")
-    async def test_header(self):
+    async def test_repeated_calls_ok(self):
+        data = [b"GET /path/to/resource HTTP/1.1\r\n\r\n"]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+
+        with self.subTest("method"):
+            self.assertEqual(
+                request.Method.GET,
+                await lazy_request.method,
+            )
+        with self.subTest("method_again"):
+            self.assertEqual(
+                request.Method.GET,
+                await lazy_request.method,
+            )
+
+    async def test_one_header(self):
         data = [
             b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\n"
         ]
         reader = MockStreamReader(data)
         lazy_request = request.LazyRequest(reader)
         expect = [request.Header("HOST", "localhost")]
-        actual = list(await lazy_request.headers)
+        actual = []
+        async for header in lazy_request.headers:
+            actual.append(header)
         self.assertEqual(expect, actual)
+
+    async def test_mult_headers(self):
+        data = [
+            b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n"
+        ]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+        expect = [
+            request.Header("HOST", "localhost"),
+            request.Header("CONTENT-TYPE", "application/json"),
+        ]
+        actual = []
+        async for header in lazy_request.headers:
+            actual.append(header)
+        self.assertEqual(expect, actual)
+
+    async def test_repeated_calls_not_ok(self):
+        data = [
+            b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        ]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+
+        with self.subTest("initial_call_ok"):
+            expect = [request.Header("HOST", "localhost")]
+            actual = []
+            async for header in lazy_request.headers:
+                actual.append(header)
+            self.assertEqual(expect, actual)
+
+        with self.subTest("next_call_fails"):
+            with self.assertRaises(request.BacktrackError):
+                actual = []
+                async for header in lazy_request.headers:
+                    actual.append(header)

@@ -94,18 +94,19 @@ class LazyRequest(object):
 
     @property
     async def headers(self) -> Iterator[Optional[Header]]:
-        pass
+        async for header in self._handle_headers():
+            yield header
 
     @property
     async def body(self) -> Optional[bytes]:
         pass
 
     async def _handle_start_line(self):
+        if not self._lines:
+            await self._initialize_lines()
+
         match self._state:
             case MessageState.StartLine:
-                if not self._lines:
-                    await self._initialize_lines()
-
                 line = await anext(self._lines)
                 method, path, protocol = parse_start_line(
                     line.data.decode()
@@ -120,6 +121,41 @@ class LazyRequest(object):
                 raise BacktrackError("Start line already received")
             case MessageState.Body:
                 raise BacktrackError("Start line already received")
+
+    async def _handle_headers(self):
+        if not self._lines:
+            await self._initialize_lines()
+
+        match self._state:
+            case MessageState.StartLine:
+                await self._handle_start_line()
+
+                async for line in self._lines:
+                    if line.type == MessageState.Body:
+                        self._body.extend(line)
+                        break
+                    header = parse_header(line.data.decode())
+                    yield header
+
+                self._state = MessageState.Body
+
+            case MessageState.Header:
+                if self._headers:
+                    while self._headers:
+                        yield self._headers.popleft()
+                else:
+                    async for line in self._lines:
+                        if line.type == MessageState.Body:
+                            self._state = MessageState.Body
+                            self._body.extend(line)
+                            break
+                        header = parse_header(line.data.decode())
+                        yield header
+
+                self._state = MessageState.Body
+
+            case MessageState.Body:
+                raise BacktrackError("Headers already received")
 
     async def _initialize_lines(self):
         self._lines = BufferedLineReader(
@@ -170,28 +206,21 @@ def parse_method(method: str) -> Method:
         raise RequestParseError(f"Method {method} not supported")
 
 
-def parse_headers(
-    lines: List[Optional[bytes]],
-) -> List[Header]:
-    headers = []
-
+def parse_header(line: str) -> Header:
     try:
-        for line in lines:
-            name, *value = line.decode().split(":")
-            value = "".join(value)
+        name, *value = line.split(":")
+        value = "".join(value)
 
-            name = name.strip().upper()
-            value = value.strip()
-            header = Header(name, value)
-            headers.append(header)
+        name = name.strip().upper()
+        value = value.strip()
+        header = Header(name, value)
+        return header
 
     except Exception as e:
         msg = "Improperly formatted HTTP header"
         LOGGER.error(msg)
         LOGGER.debug(e)
         raise RequestParseError(msg)
-
-    return headers
 
 
 def parse_body(
