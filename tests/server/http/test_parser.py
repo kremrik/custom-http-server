@@ -105,6 +105,45 @@ class test_Parser(unittest.TestCase):
             actual = p.maybe_get_lines(lines[1])
             self.assertEqual(expect, actual)
 
+    def test_start_line_header_broken_up_2(self):
+        lines = [
+            b"GET /path/to/res",
+            b"ource HTTP/1.1\r\n",
+            b"Host: localhost\r",
+            b"\n\r\n",
+        ]
+        p = parser.BufferedParser()
+
+        with self.subTest("not_enough_data_yet"):
+            expect = []
+            actual = p.maybe_get_lines(lines[0])
+            self.assertEqual(expect, actual)
+
+        with self.subTest("enough_for_start_line"):
+            expect = [
+                parser.Line(
+                    data=b"GET /path/to/resource HTTP/1.1",
+                    type=parser.MessageState.StartLine,
+                ),
+            ]
+            actual = p.maybe_get_lines(lines[1])
+            self.assertEqual(expect, actual)
+
+        with self.subTest("not_enough_data_again"):
+            expect = []
+            actual = p.maybe_get_lines(lines[2])
+            self.assertEqual(expect, actual)
+
+        with self.subTest("header_and_body_now"):
+            expect = [
+                parser.Line(
+                    data=b"Host: localhost",
+                    type=parser.MessageState.Header,
+                ),
+            ]
+            actual = p.maybe_get_lines(lines[3])
+            self.assertEqual(expect, actual)
+
     def test_start_line_header_body_broken_up(self):
         lines = [
             b"GET /path/to/resource HTTP/1.1\r",

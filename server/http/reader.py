@@ -1,6 +1,7 @@
 from server.http import parser
 
 import asyncio
+from collections import deque
 from typing import List, Optional
 
 
@@ -26,9 +27,12 @@ class BufferedLineReader(object):
         self._buff_size: int = buff_size
         self._max_header_size: int = max_header_size
         self._max_body_chunk: int = max_body_chunk
-        self._lines: List[Optional[parser.Line]] = []
+        self._lines: deque[Optional[parser.Line]] = deque()
         self._end_of_stream: bool = False
-        self._parser: parser.BufferedParser = parser.BufferedParser()
+        self._parser: parser.BufferedParser = parser.BufferedParser(
+            max_header_size=max_header_size,
+            max_body_chunk=max_body_chunk,
+        )
 
     async def lines(self):
         while not self._end_of_stream:
@@ -39,8 +43,8 @@ class BufferedLineReader(object):
                     lines = self._parser.maybe_get_lines(data)
                 self._lines.extend(lines)
 
-            for line in self._lines:
-                yield line
+            while self._lines:
+                yield self._lines.popleft()
 
     async def _recv(self):
         buffer = await self._reader.read(self._buff_size)

@@ -101,44 +101,6 @@ class LazyRequest(object):
     async def body(self) -> Optional[bytes]:
         pass
 
-    async def _get_start_line(self):
-        if self._msg_state != parser.MessageState.StartLine:
-            raise RequestParseError(
-                "Cannot re-poll connection for start line"
-            )
-
-        if not self._lines:
-            await self._hydrate_lines()
-
-        if self._lines[0] != parser.MessageState.StartLine:
-            raise RequestParseError(
-                "Start line has already been consumed"
-            )
-
-        return self._lines.popleft()
-
-    async def _get_header_lines(self):
-        pass
-
-    async def _get_body_lines(self):
-        pass
-
-    async def _hydrate_lines(self) -> List[parser.Line]:
-        lines = None
-        while not lines or not self._END:
-            data = await self._recv()
-            lines = self._parser.maybe_get_lines(data)
-        self._lines.extend(lines)
-
-    async def _recv(self) -> bytes:
-        buffer = await self._reader.read(self._buff_size)
-        if len(buffer) < self._buff_size:
-            self._END = True
-        return buffer
-
-    def __repr__(self) -> str:
-        pass
-
 
 class StartLine(NamedTuple):
     method: Method

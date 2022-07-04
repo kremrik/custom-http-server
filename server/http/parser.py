@@ -1,9 +1,19 @@
+from server.http.error import HttpBaseError
+
 from enum import Enum, auto
 from typing import List, NamedTuple, Optional
 
 
 CR = b"\r"
 NL = b"\n"
+
+
+class HeaderLengthError(HttpBaseError):
+    pass
+
+
+class BodyLengthError(HttpBaseError):
+    pass
 
 
 class MessageState(Enum):
@@ -22,9 +32,17 @@ class BufferedParser(object):
         "_state",
         "_buffer",
         "_ws_encountered",
+        "_max_header_size",
+        "_max_body_chunk",
     )
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_header_size: int = 1_024,
+        max_body_chunk: int = 102_400,
+    ) -> None:
+        self._max_header_size: int = max_header_size
+        self._max_body_chunk: int = max_body_chunk
         self._state: MessageState = MessageState.StartLine
         self._buffer: bytes = b""
         self._ws_encountered: int = 0
@@ -34,6 +52,13 @@ class BufferedParser(object):
         *complete, incomplete = self._buffer.splitlines(
             keepends=True
         )
+        if BufferedParser.incomplete_actually_complete(incomplete):
+            if not complete:
+                complete.append(incomplete)
+                incomplete = b""
+            else:
+                complete[-1] += incomplete
+
         self._buffer = incomplete
 
         lines = []
@@ -70,3 +95,7 @@ class BufferedParser(object):
     @staticmethod
     def count_ws(line: bytes) -> int:
         return line.count(CR) + line.count(NL)
+
+    @staticmethod
+    def incomplete_actually_complete(line: bytes) -> bool:
+        return line.endswith(CR + NL)

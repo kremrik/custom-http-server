@@ -6,17 +6,20 @@ from textwrap import wrap
 from typing import List
 
 
+MOCK_RECV_SIZE = 16
+
+
 class MockStreamReader:
-    def __init__(self, msg: bytes) -> None:
-        self.msg = msg
+    def __init__(self, msg: List[bytes]) -> None:
+        self.chunks = deque(msg)
 
     async def read(self, buff_size: int):
-        return self.msg
+        return self.chunks.popleft()
 
 
 class test_BufferedLineReader(unittest.IsolatedAsyncioTestCase):
     async def test_start_line(self):
-        data = b"GET /path/to/resource HTTP/1.1\r\n\r\n"
+        data = [b"GET /path/to/resource HTTP/1.1\r\n\r\n"]
         mock_reader = MockStreamReader(data)
         blr = reader.BufferedLineReader(mock_reader)
         expect = [
@@ -33,9 +36,14 @@ class test_BufferedLineReader(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(expect, actual)
 
     async def test_start_line_and_header(self):
-        data = b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        data = [
+            b"GET /path/to/res",
+            b"ource HTTP/1.1\r\n",
+            b"Host: localhost\r",
+            b"\n\r\n",
+        ]
         mock_reader = MockStreamReader(data)
-        blr = reader.BufferedLineReader(mock_reader)
+        blr = reader.BufferedLineReader(mock_reader, MOCK_RECV_SIZE)
         expect = [
             parser.Line(
                 data=b"GET /path/to/resource HTTP/1.1",
@@ -54,13 +62,9 @@ class test_BufferedLineReader(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(expect, actual)
 
     async def test_start_line_and_header_and_body(self):
-        data = b"".join(
-            [
-                b"GET /path/to/resource HTTP/1.1\r\n",
-                b"Host: localhost\r\n\r\n",
-                b"body text\r\n\r\n",
-            ]
-        )
+        data = [
+            b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\nbody text\r\n\r\n",
+        ]
         mock_reader = MockStreamReader(data)
         blr = reader.BufferedLineReader(mock_reader)
         expect = [
