@@ -6,14 +6,12 @@ from server.http.protocol import Protocol
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
-from functools import wraps
 from typing import Iterator, List, NamedTuple, Optional
 
 
 LOGGER = logging.getLogger("http_parser")
-
-NEWLINE = b"\r\n"
 
 
 class RequestParseError(HttpServerError):
@@ -47,6 +45,8 @@ class LazyRequest(object):
         "_buff_size",
         "_parser",
         "_lines",
+        "_END",
+        "_msg_state",
         "_method",
         "_path",
         "_protocol",
@@ -61,14 +61,19 @@ class LazyRequest(object):
     ) -> None:
         self._reader: asyncio.StreamReader = reader
         self._buff_size: int = buff_size
+
         self._parser: parser.BufferedParser = parser.BufferedParser()
-        self._lines: List[parser.Line] = []
+        self._lines: deque[parser.Line] = deque()
+        self._END: bool = False
+        self._msg_state: parser.MessageState = (
+            parser.MessageState.StartLine
+        )
 
         self._method: Method = None
         self._path: str = None
         self._protocol: Protocol = None
-        self._headers: Iterator[Optional[Header]] = []
-        self._body: Optional[bytes] = None
+        self._headers: Iterator[Optional[Header]] = None
+        self._body: Iterator[Optional[bytes]] = None
 
     @property
     async def method(self) -> Method:
@@ -96,33 +101,40 @@ class LazyRequest(object):
     async def body(self) -> Optional[bytes]:
         pass
 
-    async def _process_next_lines(self):
+    async def _get_start_line(self):
+        if self._msg_state != parser.MessageState.StartLine:
+            raise RequestParseError(
+                "Cannot re-poll connection for start line"
+            )
+
         if not self._lines:
             await self._hydrate_lines()
 
-        for line in self._lines:
-            match line.type:
-                case parser.MessageState.StartLine:
-                    method, path, protocol = parse_start_line(
-                        line.data.decode()
-                    )
-                    self._method = method
-                    self._path = path
-                    self._protocol = protocol
-                case parser.MessageState.Header:
-                    pass
-                case parser.MessageState.Body:
-                    pass
+        if self._lines[0] != parser.MessageState.StartLine:
+            raise RequestParseError(
+                "Start line has already been consumed"
+            )
+
+        return self._lines.popleft()
+
+    async def _get_header_lines(self):
+        pass
+
+    async def _get_body_lines(self):
+        pass
 
     async def _hydrate_lines(self) -> List[parser.Line]:
         lines = None
-        while not lines:
+        while not lines or not self._END:
             data = await self._recv()
             lines = self._parser.maybe_get_lines(data)
-        self._lines = lines
+        self._lines.extend(lines)
 
     async def _recv(self) -> bytes:
-        return await self._reader.read(self._buff_size)
+        buffer = await self._reader.read(self._buff_size)
+        if len(buffer) < self._buff_size:
+            self._END = True
+        return buffer
 
     def __repr__(self) -> str:
         pass
