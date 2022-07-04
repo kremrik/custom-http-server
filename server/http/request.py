@@ -1,8 +1,9 @@
 from server.error import HttpServerError
-from server.http import parser
 from server.http.header import Header
 from server.http.method import Method
 from server.http.protocol import Protocol
+from server.http.parser import MessageState
+from server.http.reader import BufferedLineReader
 
 import asyncio
 import logging
@@ -15,6 +16,10 @@ LOGGER = logging.getLogger("http_parser")
 
 
 class RequestParseError(HttpServerError):
+    pass
+
+
+class BacktrackError(HttpServerError):
     pass
 
 
@@ -43,10 +48,8 @@ class LazyRequest(object):
     __slots__ = (
         "_reader",
         "_buff_size",
-        "_parser",
+        "_state",
         "_lines",
-        "_END",
-        "_msg_state",
         "_method",
         "_path",
         "_protocol",
@@ -62,35 +65,31 @@ class LazyRequest(object):
         self._reader: asyncio.StreamReader = reader
         self._buff_size: int = buff_size
 
-        self._parser: parser.BufferedParser = parser.BufferedParser()
-        self._lines: deque[parser.Line] = deque()
-        self._END: bool = False
-        self._msg_state: parser.MessageState = (
-            parser.MessageState.StartLine
-        )
+        self._state: MessageState = MessageState.StartLine
+        self._lines: BufferedLineReader = None
 
         self._method: Method = None
         self._path: str = None
         self._protocol: Protocol = None
-        self._headers: Iterator[Optional[Header]] = None
-        self._body: Iterator[Optional[bytes]] = None
+        self._headers: deque[Optional[Header]] = deque()
+        self._body: deque[Optional[bytes]] = deque()
 
     @property
     async def method(self) -> Method:
         if not self._method:
-            await self._process_next_lines()
+            await self._handle_start_line()
         return self._method
 
     @property
     async def path(self) -> str:
         if not self._path:
-            await self._process_next_lines()
+            await self._handle_start_line()
         return self._path
 
     @property
     async def protocol(self) -> Protocol:
         if not self._protocol:
-            await self._process_next_lines()
+            await self._handle_start_line()
         return self._protocol
 
     @property
@@ -100,6 +99,33 @@ class LazyRequest(object):
     @property
     async def body(self) -> Optional[bytes]:
         pass
+
+    async def _handle_start_line(self):
+        match self._state:
+            case MessageState.StartLine:
+                if not self._lines:
+                    await self._initialize_lines()
+
+                line = await anext(self._lines)
+                method, path, protocol = parse_start_line(
+                    line.data.decode()
+                )
+                self._method = method
+                self._path = path
+                self._protocol = protocol
+
+                self._state = MessageState.Header
+
+            case MessageState.Header:
+                raise BacktrackError("Start line already received")
+            case MessageState.Body:
+                raise BacktrackError("Start line already received")
+
+    async def _initialize_lines(self):
+        self._lines = BufferedLineReader(
+            reader=self._reader,
+            buff_size=self._buff_size,
+        ).lines()
 
 
 class StartLine(NamedTuple):

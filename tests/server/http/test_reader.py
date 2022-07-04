@@ -56,7 +56,8 @@ class test_BufferedLineReader(unittest.IsolatedAsyncioTestCase):
         ]
 
         actual = []
-        async for line in blr.lines():
+        lines = blr.lines()
+        async for line in lines:
             actual.append(line)
 
         self.assertEqual(expect, actual)
