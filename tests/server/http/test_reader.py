@@ -78,7 +78,7 @@ class test_BufferedLineReader(unittest.IsolatedAsyncioTestCase):
                 type=parser.MessageState.Header,
             ),
             parser.Line(
-                data=b"body text",
+                data=b"body text\r\n\r\n",
                 type=parser.MessageState.Body,
             ),
         ]

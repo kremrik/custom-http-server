@@ -50,6 +50,7 @@ class LazyRequest(object):
         "_buff_size",
         "_state",
         "_lines",
+        "_exhausted",
         "_method",
         "_path",
         "_protocol",
@@ -67,6 +68,7 @@ class LazyRequest(object):
 
         self._state: MessageState = MessageState.StartLine
         self._lines: BufferedLineReader = None
+        self._exhausted: bool = False
 
         self._method: Method = None
         self._path: str = None
@@ -99,7 +101,8 @@ class LazyRequest(object):
 
     @property
     async def body(self) -> Optional[bytes]:
-        pass
+        async for chunk in self._handle_body():
+            yield chunk
 
     async def _handle_start_line(self):
         if not self._lines:
@@ -129,33 +132,61 @@ class LazyRequest(object):
         match self._state:
             case MessageState.StartLine:
                 await self._handle_start_line()
-
-                async for line in self._lines:
-                    if line.type == MessageState.Body:
-                        self._body.extend(line)
-                        break
-                    header = parse_header(line.data.decode())
+                async for header in self._stream_headers():
                     yield header
-
-                self._state = MessageState.Body
 
             case MessageState.Header:
                 if self._headers:
                     while self._headers:
                         yield self._headers.popleft()
                 else:
-                    async for line in self._lines:
-                        if line.type == MessageState.Body:
-                            self._state = MessageState.Body
-                            self._body.extend(line)
-                            break
-                        header = parse_header(line.data.decode())
+                    async for header in self._stream_headers():
                         yield header
-
-                self._state = MessageState.Body
 
             case MessageState.Body:
                 raise BacktrackError("Headers already received")
+
+    async def _stream_headers(self):
+        async for line in self._lines:
+            if line.type == MessageState.Body:
+                self._body.append(line.data)
+                break
+            header = parse_header(line.data.decode())
+            yield header
+        self._state = MessageState.Body
+
+    async def _handle_body(self):
+        if not self._lines:
+            await self._initialize_lines()
+
+        match self._state:
+            case MessageState.StartLine:
+                await self._handle_start_line()
+                async for header in self._handle_headers():
+                    self._headers.append(header)
+                if self._body:
+                    while self._body:
+                        yield self._body.popleft()
+                async for line in self._lines:
+                    yield line.data
+
+            case MessageState.Header:
+                async for header in self._handle_headers():
+                    self._headers.append(header)
+                if self._body:
+                    while self._body:
+                        yield self._body.popleft()
+                async for line in self._lines:
+                    yield line.data
+
+            case MessageState.Body:
+                if self._exhausted:
+                    raise BacktrackError("Body already received")
+                if self._body:
+                    while self._body:
+                        yield self._body.popleft()
+                async for line in self._lines:
+                    yield line.data
 
     async def _initialize_lines(self):
         self._lines = BufferedLineReader(

@@ -66,15 +66,17 @@ class BufferedParser(object):
             stripped_c = c.strip()
             cur_state = self._state
 
-            if self._state != MessageState.Body:
+            if self._state == MessageState.Body:
+                line = Line(data=c, type=cur_state)
+                lines.append(line)
+            else:
                 ws = BufferedParser.count_ws(c)
                 self._ws_encountered += ws
                 self._update_state()
                 if not stripped_c:
                     continue
-
-            line = Line(data=stripped_c, type=cur_state)
-            lines.append(line)
+                line = Line(data=stripped_c, type=cur_state)
+                lines.append(line)
 
         return lines
 

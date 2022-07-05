@@ -68,11 +68,11 @@ class test_Parser(unittest.TestCase):
                 type=parser.MessageState.Header,
             ),
             parser.Line(
-                data=b"BODY",
+                data=b"BODY\n",
                 type=parser.MessageState.Body,
             ),
             parser.Line(
-                data=b"TEXT",
+                data=b"TEXT\r\n\r\n",
                 type=parser.MessageState.Body,
             ),
         ]
@@ -134,7 +134,7 @@ class test_Parser(unittest.TestCase):
             actual = p.maybe_get_lines(lines[2])
             self.assertEqual(expect, actual)
 
-        with self.subTest("header_and_body_now"):
+        with self.subTest("header_now"):
             expect = [
                 parser.Line(
                     data=b"Host: localhost",
@@ -174,7 +174,48 @@ class test_Parser(unittest.TestCase):
                     type=parser.MessageState.Header,
                 ),
                 parser.Line(
-                    data=b"body text", type=parser.MessageState.Body
+                    data=b"body text\r\n\r\n",
+                    type=parser.MessageState.Body,
+                ),
+            ]
+            actual = p.maybe_get_lines(lines[2])
+            self.assertEqual(expect, actual)
+
+    def test_body_with_newline(self):
+        lines = [
+            b"GET /path/to/resource HTTP/1.1\r",
+            b"\nHost: localhost",
+            b"\r\n\r\nBODY\n    TEXT\r\n\r\n",
+        ]
+        p = parser.BufferedParser()
+
+        with self.subTest("not_enough_data_yet"):
+            expect = []
+            actual = p.maybe_get_lines(lines[0])
+            self.assertEqual(expect, actual)
+
+        with self.subTest("enough_for_start_line"):
+            expect = [
+                parser.Line(
+                    data=b"GET /path/to/resource HTTP/1.1",
+                    type=parser.MessageState.StartLine,
+                ),
+            ]
+            actual = p.maybe_get_lines(lines[1])
+            self.assertEqual(expect, actual)
+
+        with self.subTest("header_and_body_now"):
+            expect = [
+                parser.Line(
+                    data=b"Host: localhost",
+                    type=parser.MessageState.Header,
+                ),
+                parser.Line(
+                    data=b"BODY\n", type=parser.MessageState.Body
+                ),
+                parser.Line(
+                    data=b"    TEXT\r\n\r\n",
+                    type=parser.MessageState.Body,
                 ),
             ]
             actual = p.maybe_get_lines(lines[2])

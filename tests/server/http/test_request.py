@@ -108,3 +108,30 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
                 actual = []
                 async for header in lazy_request.headers:
                     actual.append(header)
+
+    async def test_body_not_exists(self):
+        data = [
+            b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        ]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+        expect = []
+        actual = []
+        async for chunk in lazy_request.body:
+            actual.append(chunk)
+        self.assertEqual(expect, actual)
+
+    async def test_body(self):
+        data = [
+            b"GET /path/to/resource HTTP/1.1\r\nHost: localhost\r\n\r\nTHIS IS\nBODY TEXT\r\n\r\n"
+        ]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+        expect = [
+            b"THIS IS\n",
+            b"BODY TEXT\r\n\r\n",
+        ]
+        actual = []
+        async for chunk in lazy_request.body:
+            actual.append(chunk)
+        self.assertEqual(expect, actual)
