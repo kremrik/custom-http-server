@@ -31,7 +31,6 @@ class BufferedParser(object):
     __slots__ = (
         "_state",
         "_buffer",
-        "_ws_encountered",
         "_max_header_size",
         "_max_body_chunk",
     )
@@ -45,7 +44,6 @@ class BufferedParser(object):
         self._max_body_chunk: int = max_body_chunk
         self._state: MessageState = MessageState.StartLine
         self._buffer: bytes = b""
-        self._ws_encountered: int = 0
 
     def maybe_get_lines(self, data: bytes) -> Optional[List[Line]]:
         self._buffer += data
@@ -66,33 +64,25 @@ class BufferedParser(object):
             stripped_c = c.strip()
             cur_state = self._state
 
-            if self._state == MessageState.Body:
-                line = Line(data=c, type=cur_state)
-                lines.append(line)
-            else:
-                ws = BufferedParser.count_ws(c)
-                self._ws_encountered += ws
-                self._update_state()
-                if not stripped_c:
-                    continue
-                line = Line(data=stripped_c, type=cur_state)
-                lines.append(line)
+            match self._state:
+                case MessageState.StartLine:
+                    ws = BufferedParser.count_ws(c)
+                    if ws == 2:
+                        self._state = MessageState.Header
+                    line = Line(data=stripped_c, type=cur_state)
+
+                case MessageState.Header:
+                    if not stripped_c:
+                        self._state = MessageState.Body
+                        continue
+                    line = Line(data=stripped_c, type=cur_state)
+
+                case MessageState.Body:
+                    line = Line(data=c, type=cur_state)
+
+            lines.append(line)
 
         return lines
-
-    def _update_state(self):
-        if (
-            self._state == MessageState.StartLine
-            and self._ws_encountered == 2
-        ):
-            self._state = MessageState.Header
-            self._ws_encountered = 0
-        elif (
-            self._state == MessageState.Header
-            and self._ws_encountered == 4
-        ):
-            self._state = MessageState.Body
-            self._ws_encountered = 0
 
     @staticmethod
     def count_ws(line: bytes) -> int:
