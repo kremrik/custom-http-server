@@ -8,8 +8,7 @@ from server.http.reader import BufferedLineReader
 import asyncio
 import logging
 from collections import deque
-from dataclasses import dataclass
-from typing import Iterator, List, NamedTuple, Optional
+from typing import AsyncGenerator, List, NamedTuple, Optional
 
 
 LOGGER = logging.getLogger("http_parser")
@@ -23,15 +22,6 @@ class BacktrackError(HttpServerError):
     pass
 
 
-@dataclass(eq=True, frozen=True)
-class Request:
-    method: Method
-    path: str
-    protocol: Protocol
-    headers: Iterator[Optional[Header]]
-    body: Optional[bytes]
-
-
 class LazyRequest(object):
     """
     Request object that only reads from a TCP stream when
@@ -42,8 +32,8 @@ class LazyRequest(object):
     method: Method
     path: str
     protocol: Protocol
-    headers: Iterator[Optional[Header]]
-    body: Optional[bytes]
+    headers: AsyncGenerator[Header, None]
+    body: AsyncGenerator[bytes, None]
 
     __slots__ = (
         "_reader",
@@ -95,12 +85,12 @@ class LazyRequest(object):
         return self._protocol
 
     @property
-    async def headers(self) -> Iterator[Optional[Header]]:
+    async def headers(self) -> AsyncGenerator[Header, None]:
         async for header in self._handle_headers():
             yield header
 
     @property
-    async def body(self) -> Optional[bytes]:
+    async def body(self) -> AsyncGenerator[bytes, None]:
         async for chunk in self._handle_body():
             yield chunk
 
