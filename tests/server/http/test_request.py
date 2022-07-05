@@ -135,3 +135,45 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
         async for chunk in lazy_request.body:
             actual.append(chunk)
         self.assertEqual(expect, actual)
+
+    async def test_assortment(self):
+        data = [
+            b"".join(
+                (
+                    b"GET /path/to/resource HTTP/1.1\r\n",
+                    b"Host: localhost\r\n",
+                    b"Content-Type: application/json\r\n",
+                    b"Another: foo\r\n\r\n",
+                    b"THIS IS\nBODY TEXT\r\n\r\n",
+                )
+            )
+        ]
+        reader = MockStreamReader(data)
+        lazy_request = request.LazyRequest(reader)
+
+        with self.subTest("get_one_header"):
+            expect = [request.Header("HOST", "localhost")]
+            actual = [await anext(lazy_request.headers)]
+            self.assertEqual(expect, actual)
+
+        with self.subTest("get_startline_element"):
+            expect = "/path/to/resource"
+            actual = await lazy_request.path
+            self.assertEqual(expect, actual)
+
+        with self.subTest("get_next_header"):
+            expect = [
+                request.Header("CONTENT-TYPE", "application/json")
+            ]
+            actual = [await anext(lazy_request.headers)]
+            self.assertEqual(expect, actual)
+
+        with self.subTest("get_body"):
+            expect = [
+                b"THIS IS\n",
+                b"BODY TEXT\r\n\r\n",
+            ]
+            actual = []
+            async for chunk in lazy_request.body:
+                actual.append(chunk)
+            self.assertEqual(expect, actual)
