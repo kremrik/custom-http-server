@@ -30,7 +30,7 @@ class LazyRequest(object):
     """
 
     method: Method
-    path: str
+    path: bytes
     protocol: Protocol
     headers: AsyncGenerator[Header, None]
     body: AsyncGenerator[bytes, None]
@@ -73,7 +73,7 @@ class LazyRequest(object):
         return self._method
 
     @property
-    async def path(self) -> str:
+    async def path(self) -> bytes:
         if not self._path:
             await self._handle_start_line()
         return self._path
@@ -101,9 +101,7 @@ class LazyRequest(object):
         match self._state:
             case MessageState.StartLine:
                 line = await anext(self._lines)
-                method, path, protocol = parse_start_line(
-                    line.data.decode()
-                )
+                method, path, protocol = parse_start_line(line.data)
                 self._method = method
                 self._path = path
                 self._protocol = protocol
@@ -141,7 +139,7 @@ class LazyRequest(object):
             if line.type == MessageState.Body:
                 self._body.append(line.data)
                 break
-            header = parse_header(line.data.decode())
+            header = parse_header(line.data)
             yield header
         self._state = MessageState.Body
 
@@ -191,7 +189,7 @@ class StartLine(NamedTuple):
     protocol: Protocol
 
 
-def parse_start_line(line: str) -> StartLine:
+def parse_start_line(line: bytes) -> StartLine:
     try:
         method, path, protocol = line.split()
         protocol = parse_protocol(protocol)
@@ -211,26 +209,27 @@ def parse_start_line(line: str) -> StartLine:
         raise RequestParseError(msg)
 
 
-def parse_protocol(protocol: str) -> Protocol:
+def parse_protocol(protocol: bytes) -> Protocol:
     try:
+        protocol = protocol.decode()
         return Protocol[protocol.replace(".", "_").replace("/", "")]
     except KeyError as e:
         LOGGER.error(e)
         raise RequestParseError(f"Protocol {protocol} not supported")
 
 
-def parse_method(method: str) -> Method:
+def parse_method(method: bytes) -> Method:
     try:
-        return Method[method.upper()]
+        return Method[method.decode().upper()]
     except KeyError as e:
         LOGGER.error(e)
         raise RequestParseError(f"Method {method} not supported")
 
 
-def parse_header(line: str) -> Header:
+def parse_header(line: bytes) -> Header:
     try:
-        name, *value = line.split(":")
-        value = "".join(value)
+        name, *value = line.split(b":")
+        value = b"".join(value)
 
         name = name.strip().upper()
         value = value.strip()

@@ -7,6 +7,7 @@ from server.http import request, response
 
 
 LOGGER = logging.getLogger("server")
+LOGGER.setLevel(logging.DEBUG)
 
 
 async def serve(host, port, client_handler=None):
@@ -33,34 +34,21 @@ async def http_client_handler(reader, writer, buff_size=1024):
     addr = writer.get_extra_info("peername")
     LOGGER.info(f"Client connected: [{addr}]")
 
-    msg = b""
-    while True:
-        buffer = await reader.read(buff_size)
-        msg += buffer
-        if len(buffer) < buff_size:
-            break
-
     try:
-        print()
-        print(msg)
-        print()
-        req = request.parse_request(msg)
-
-        LOGGER.info(f"{req.protocol} {req.method} {req.path}")
-
-        body = req.body or b"LOOKS GOOD!"
+        req = request.LazyRequest(reader)
+        path = await req.path
+        body = path + b"  good to go!"
         resp = response.Response(
             protocol=response.Protocol.HTTP1_1,
             status=response.Status.OK,
             body=body,
         )
-        print(req)
         resp_msg = response.to_bytes(resp)
         writer.write(resp_msg)
         await writer.drain()
         writer.close()
 
-    except error.HttpServerError as e:
+    except Exception as e:
         body = e.args[0].encode()
         resp = response.Response(
             protocol=response.Protocol.HTTP1_1,

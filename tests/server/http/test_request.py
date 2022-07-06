@@ -26,7 +26,7 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
             )
         with self.subTest("path"):
             self.assertEqual(
-                "/path/to/resource",
+                b"/path/to/resource",
                 await lazy_request.path,
             )
         with self.subTest("protocol"):
@@ -68,7 +68,7 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
         ]
         reader = MockStreamReader(data)
         lazy_request = request.LazyRequest(reader)
-        expect = [request.Header("HOST", "localhost")]
+        expect = [request.Header(b"HOST", b"localhost")]
         actual = []
         async for header in lazy_request.headers:
             actual.append(header)
@@ -81,8 +81,8 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
         reader = MockStreamReader(data)
         lazy_request = request.LazyRequest(reader)
         expect = [
-            request.Header("HOST", "localhost"),
-            request.Header("CONTENT-TYPE", "application/json"),
+            request.Header(b"HOST", b"localhost"),
+            request.Header(b"CONTENT-TYPE", b"application/json"),
         ]
         actual = []
         async for header in lazy_request.headers:
@@ -97,7 +97,7 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
         lazy_request = request.LazyRequest(reader)
 
         with self.subTest("initial_call_ok"):
-            expect = [request.Header("HOST", "localhost")]
+            expect = [request.Header(b"HOST", b"localhost")]
             actual = []
             async for header in lazy_request.headers:
                 actual.append(header)
@@ -152,18 +152,18 @@ class test_LazyRequest(unittest.IsolatedAsyncioTestCase):
         lazy_request = request.LazyRequest(reader)
 
         with self.subTest("get_one_header"):
-            expect = [request.Header("HOST", "localhost")]
+            expect = [request.Header(b"HOST", b"localhost")]
             actual = [await anext(lazy_request.headers)]
             self.assertEqual(expect, actual)
 
         with self.subTest("get_startline_element"):
-            expect = "/path/to/resource"
+            expect = b"/path/to/resource"
             actual = await lazy_request.path
             self.assertEqual(expect, actual)
 
         with self.subTest("get_next_header"):
             expect = [
-                request.Header("CONTENT-TYPE", "application/json")
+                request.Header(b"CONTENT-TYPE", b"application/json")
             ]
             actual = [await anext(lazy_request.headers)]
             self.assertEqual(expect, actual)

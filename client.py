@@ -8,7 +8,7 @@ def connect(
     message,
     sleep_for,
     host="localhost", 
-    port=50007, 
+    port=8080, 
     buff_size=8
 ):
     with socket.socket(AF_INET, SOCK_STREAM) as s:
