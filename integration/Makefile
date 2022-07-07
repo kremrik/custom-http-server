@@ -4,7 +4,8 @@ build:
 	docker build -t $(CONTAINER) .
 
 serve:
-	docker run --rm -d \
+	echo 'Forwarding port 8080...'
+	docker run --rm \
 		--name $(CONTAINER) \
 		-p 8089:443 \
 		--add-host host.docker.internal:host-gateway \
